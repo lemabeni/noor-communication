@@ -1,2 +1,3 @@
 User-agent: *
 Allow: /
+Sitemap: https://noorcommunication.lemabeni50.workers.dev/sitemap.xml
