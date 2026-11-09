@@ -3,7 +3,7 @@ name: Import Noor Communication site
 on:
   push:
     paths:
-      - "Noor_Communication_V4_2_Securite_Formulaire.zip"
+      - "Noor_V4_2.part*"
 
 permissions:
   contents: write
@@ -17,20 +17,20 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Extract V4.2 website
+      - name: Reassemble and extract V4.2
         shell: bash
         run: |
           set -euo pipefail
-          archive="Noor_Communication_V4_2_Securite_Formulaire.zip"
-          test -f "$archive"
+          archive="/tmp/noor-v4.2.zip"
+          cat Noor_V4_2.part* > "$archive"
+          unzip -tq "$archive"
           rm -rf /tmp/noor-site
           mkdir -p /tmp/noor-site
           unzip -q "$archive" -d /tmp/noor-site
-          source_dir="/tmp/noor-site/Noor_Communication_V4"
-          test -f "$source_dir/index.html"
-          test -f "$source_dir/config.js"
-          cp -a "$source_dir/." .
-          rm -f "$archive"
+          test -f /tmp/noor-site/index.html
+          test -f /tmp/noor-site/config.js
+          cp -a /tmp/noor-site/. .
+          rm -f Noor_V4_2.part*
 
       - name: Commit extracted website
         run: |
