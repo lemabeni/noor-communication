@@ -1,0 +1,43 @@
+name: Import Noor Communication site
+
+on:
+  push:
+    paths:
+      - "Noor_Communication_V4_2_Securite_Formulaire.zip"
+
+permissions:
+  contents: write
+
+jobs:
+  extract-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Extract V4.2 website
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="Noor_Communication_V4_2_Securite_Formulaire.zip"
+          test -f "$archive"
+          rm -rf /tmp/noor-site
+          mkdir -p /tmp/noor-site
+          unzip -q "$archive" -d /tmp/noor-site
+          source_dir="/tmp/noor-site/Noor_Communication_V4"
+          test -f "$source_dir/index.html"
+          test -f "$source_dir/config.js"
+          cp -a "$source_dir/." .
+          rm -f "$archive"
+
+      - name: Commit extracted website
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Import Noor Communication website V4.2"
+            git push
+          fi
