@@ -1,0 +1,348 @@
+/* Noor Communication : comportement commun du site.
+   Les données viennent de Supabase quand js/config.js est renseigné,
+   sinon du catalogue local (js/data.js). */
+(function () {
+  'use strict';
+  var CFG = window.NOOR_CONFIG || {};
+  var D = window.NOOR_DATA || { categories: [], works: {}, tariffs: [] };
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function plural(n, one, many) { return n + ' ' + (n > 1 ? many : one); }
+
+  /* ---------- menu mobile ---------- */
+  var burger = $('#burger'), mnav = $('#mnav');
+  function setMenu(open) {
+    if (!mnav) return;
+    mnav.classList.toggle('open', open);
+    burger.setAttribute('aria-expanded', String(open));
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  if (burger) {
+    burger.addEventListener('click', function () { setMenu(true); });
+    $('#mclose').addEventListener('click', function () { setMenu(false); });
+    $$('a', mnav).forEach(function (a) { a.addEventListener('click', function () { setMenu(false); }); });
+  }
+
+  /* ---------- catalogue ---------- */
+  function localCatalogue() {
+    var cats = D.categories.map(function (c) {
+      return {
+        id: c.id, name: c.name, tagline: c.tagline,
+        subs: c.subs.map(function (s) {
+          return {
+            id: s.id, name: s.name, desc: s.desc, price: s.price,
+            works: s.works.map(function (id) {
+              var w = D.works[id];
+              return { id: id, title: w.title, meta: w.meta, thumb: w.thumb, full: w.full, tw: w.tw, th: w.th, light: !!w.light };
+            })
+          };
+        })
+      };
+    });
+    return { categories: cats, tariffs: D.tariffs.slice() };
+  }
+  var cataloguePromise = null;
+  function loadCatalogue() {
+    if (cataloguePromise) return cataloguePromise;
+    var local = localCatalogue();
+    if (!CFG.supabaseUrl || !CFG.supabaseKey || !window.supabase) {
+      cataloguePromise = Promise.resolve(local);
+      return cataloguePromise;
+    }
+    var sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+    cataloguePromise = Promise.all([
+      sb.from('services').select('id,title,slug,description,sort_order,is_published').eq('is_published', true).order('sort_order'),
+      sb.from('projects').select('id,title,slug,category,short_description,description,cover_image,gallery,client_name,year,is_featured,sort_order,is_published').eq('is_published', true).order('sort_order'),
+      sb.from('service_pricing').select('category,service,detail,price,price_prefix,price_suffix,standard,express,sort_order').eq('is_published', true).order('sort_order')
+    ]).then(function (r) {
+      if (r.some(function (x) { return x.error; }) || !r[0].data || !r[0].data.length) return local;
+      if (!r[1].data || !r[1].data.length) return local; // conserve le catalogue/portfolio local tant qu'aucune réalisation n'a été publiée dans l'administration
+      var projects = r[1].data || [];
+      var cats = r[0].data.map(function (c) {
+        var related = projects.filter(function (w) { return (w.category || '').toLowerCase() === c.title.toLowerCase() || (w.category || '').toLowerCase() === c.slug.toLowerCase(); });
+        return { id: c.slug, name: c.title, tagline: c.description || '', subs: [{
+          id: c.slug, name: c.title, desc: c.description || '', price: '',
+          works: related.map(function (w) {
+            return { id: w.id, title: w.title, meta: [w.short_description, w.client_name, w.year].filter(Boolean).join(' · '), thumb: w.cover_image || '', full: w.cover_image || '', tw: 560, th: 560, light: false };
+          })
+        }] };
+      });
+      var tariffs = (r[2].data || []).map(function (t) {
+        var c = r[0].data.find(function (x) { return x.title === t.category || x.slug === t.category; });
+        return [c ? c.slug : t.category, t.service, t.detail || '', t.price, t.price_prefix || '', t.price_suffix || '', t.standard || '', t.express || ''];
+      });
+      return { categories: cats, tariffs: tariffs.length ? tariffs : local.tariffs };
+    }).catch(function () { return local; });
+    return cataloguePromise;
+  }
+  function catCount(c) { return c.subs.reduce(function (n, s) { return n + s.works.length; }, 0); }
+  function catCover(c) {
+    for (var i = 0; i < c.subs.length; i++) if (c.subs[i].works.length) return c.subs[i].works[0];
+    return null;
+  }
+  function coverImg(w) {
+    return w ? '<img src="' + esc(w.thumb) + '" alt="" loading="lazy" width="' + (w.tw || 560) + '" height="' + (w.th || 560) + '">'
+             : '<span class="ph" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-4.5 3.5 3L16 13l4 4"/></svg></span>';
+  }
+
+  /* ---------- visionneuse (agrandissement) ---------- */
+  var lb = null, lbItems = [], lbIndex = 0, lbOpener = null, lbToken = 0;
+  function buildLb() {
+    lb = document.createElement('div');
+    lb.className = 'lbx';
+    lb.setAttribute('role', 'dialog');
+    lb.setAttribute('aria-modal', 'true');
+    lb.setAttribute('aria-label', 'Agrandissement de la création');
+    lb.innerHTML =
+      '<button class="lbx-close" type="button" aria-label="Fermer">✕</button>' +
+      '<button class="lbx-nav lbx-prev" type="button" aria-label="Image précédente">‹</button>' +
+      '<button class="lbx-nav lbx-next" type="button" aria-label="Image suivante">›</button>' +
+      '<figure class="lbx-fig"><div class="lbx-stage"><img class="lbx-img" alt=""></div>' +
+      '<figcaption class="lbx-cap"><b></b><span></span><em></em></figcaption></figure>';
+    document.body.appendChild(lb);
+    $('.lbx-close', lb).addEventListener('click', closeLb);
+    $('.lbx-prev', lb).addEventListener('click', function () { stepLb(-1); });
+    $('.lbx-next', lb).addEventListener('click', function () { stepLb(1); });
+    lb.addEventListener('click', function (e) { if (e.target === lb || e.target.classList.contains('lbx-stage')) closeLb(); });
+    var x0 = null;
+    lb.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+    lb.addEventListener('touchend', function (e) {
+      if (x0 === null) return;
+      var dx = e.changedTouches[0].clientX - x0; x0 = null;
+      if (Math.abs(dx) > 50) stepLb(dx < 0 ? 1 : -1);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (!lb.classList.contains('open')) { if (e.key === 'Escape') setMenu(false); return; }
+      if (e.key === 'Escape') closeLb();
+      else if (e.key === 'ArrowLeft') stepLb(-1);
+      else if (e.key === 'ArrowRight') stepLb(1);
+    });
+  }
+  function showLb() {
+    var it = lbItems[lbIndex], img = $('.lbx-img', lb), tok = ++lbToken;
+    img.classList.add('loading');
+    img.alt = it.title + ', ' + it.meta;
+    img.src = it.thumb;
+    var pre = new Image();
+    pre.onload = function () { if (tok === lbToken) { img.src = it.full; img.classList.remove('loading'); } };
+    pre.onerror = function () { if (tok === lbToken) img.classList.remove('loading'); };
+    pre.src = it.full;
+    $('.lbx-cap b', lb).textContent = it.title;
+    $('.lbx-cap span', lb).textContent = it.meta;
+    $('.lbx-cap em', lb).textContent = lbItems.length > 1 ? (lbIndex + 1) + ' / ' + lbItems.length : '';
+    $('.lbx-prev', lb).hidden = $('.lbx-next', lb).hidden = lbItems.length < 2;
+    lb.classList.toggle('light', !!it.light);
+  }
+  function openLb(items, i, opener) {
+    if (!lb) buildLb();
+    lbItems = items; lbIndex = i; lbOpener = opener || null;
+    showLb();
+    lb.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    $('.lbx-close', lb).focus();
+  }
+  function stepLb(d) { lbIndex = (lbIndex + d + lbItems.length) % lbItems.length; showLb(); }
+  function closeLb() {
+    lb.classList.remove('open');
+    document.body.style.overflow = '';
+    if (lbOpener && document.contains(lbOpener)) lbOpener.focus();
+  }
+  function workButtons(works, root) {
+    $$('.work', root).forEach(function (b, i) {
+      b.addEventListener('click', function () { openLb(works, i, b); });
+    });
+  }
+  function galleryHtml(works) {
+    return works.map(function (w) {
+      return '<button class="work' + (w.light ? ' light-img' : '') + '" type="button" aria-label="Agrandir : ' + esc(w.title) + '">' +
+        '<img src="' + esc(w.thumb) + '" alt="' + esc(w.title + ', ' + w.meta) + '" loading="lazy" width="' + (w.tw || 560) + '" height="' + (w.th || 560) + '">' +
+        '<span class="cap"><b>' + esc(w.title) + '</b><span>' + esc(w.meta) + '</span></span></button>';
+    }).join('');
+  }
+
+  /* ---------- accueil ---------- */
+  function initHome(cat) {
+    var cc = $('#home-cats');
+    if (cc) {
+      cc.innerHTML = cat.categories.map(function (c) {
+        var n = catCount(c);
+        return '<a class="catcard" href="realisations.html#' + esc(c.id) + '"><span class="cover">' + coverImg(catCover(c)) + '</span>' +
+          '<span class="cc-body"><b>' + esc(c.name) + '</b><span>' + esc(c.tagline) + '</span><em>' + plural(n, 'création', 'créations') + '</em></span></a>';
+      }).join('');
+    }
+    var fw = $('#home-featured');
+    if (fw) {
+      var list = [], round = 0, added = true;
+      while (list.length < 8 && added) {
+        added = false;
+        cat.categories.forEach(function (c) {
+          c.subs.forEach(function (s) {
+            if (list.length < 8 && s.works[round]) { list.push(s.works[round]); added = true; }
+          });
+        });
+        round++;
+      }
+      fw.innerHTML = galleryHtml(list);
+      workButtons(list, fw);
+    }
+  }
+
+  /* ---------- services ---------- */
+  function initServices(cat) {
+    var root = $('#svc-root');
+    root.innerHTML = cat.categories.map(function (c) {
+      var rows = c.subs.map(function (s) {
+        var n = s.works.length;
+        return '<li><div><b>' + esc(s.name) + '</b><span>' + esc(s.desc) + '</span></div><div class="svc-meta"><strong>' + esc(s.price) + '</strong>' +
+          '<a href="realisations.html#' + esc(c.id) + '--' + esc(s.id) + '">' + (n ? plural(n, 'création', 'créations') : 'Bientôt') + '</a></div></li>';
+      }).join('');
+      return '<article class="svc-block" id="' + esc(c.id) + '"><div class="svc-head"><h2>' + esc(c.name) + '</h2><p>' + esc(c.tagline) + '</p>' +
+        '<div class="svc-links"><a class="btn btn-s" href="tarifs.html#' + esc(c.id) + '">Voir les tarifs</a><a class="btn btn-s" href="realisations.html#' + esc(c.id) + '">Voir les réalisations</a></div></div>' +
+        '<ul class="svc-list">' + rows + '</ul></article>';
+    }).join('');
+  }
+
+  /* ---------- réalisations : catégorie > subdivision > créations ---------- */
+  function initReal(cat) {
+    var root = $('#real-root');
+    function find(id) { return cat.categories.filter(function (c) { return c.id === id; })[0]; }
+    function render() {
+      var parts = location.hash.replace('#', '').split('--');
+      var c = find(parts[0]);
+      var s = c && parts[1] ? c.subs.filter(function (x) { return x.id === parts[1]; })[0] : null;
+      var html = '';
+      if (!c) {
+        html = '<div class="catcards">' + cat.categories.map(function (k) {
+          var n = catCount(k);
+          return '<a class="catcard big" href="#' + esc(k.id) + '"><span class="cover">' + coverImg(catCover(k)) + '</span>' +
+            '<span class="cc-body"><b>' + esc(k.name) + '</b><span>' + esc(k.tagline) + '</span><em>' + plural(k.subs.length, 'subdivision', 'subdivisions') + ' · ' + plural(n, 'création', 'créations') + '</em></span></a>';
+        }).join('') + '</div>';
+        root.innerHTML = html;
+        return;
+      }
+      html += '<nav class="crumbs" aria-label="Fil d\'Ariane"><a href="#">Réalisations</a><span>/</span>' +
+        (s ? '<a href="#' + esc(c.id) + '">' + esc(c.name) + '</a><span>/</span><b aria-current="page">' + esc(s.name) + '</b>' : '<b aria-current="page">' + esc(c.name) + '</b>') + '</nav>';
+      html += '<div class="tabs lvl1" role="navigation" aria-label="Catégories">' + cat.categories.map(function (k) {
+        return '<a class="tab" href="#' + esc(k.id) + '"' + (k.id === c.id ? ' aria-current="true"' : '') + '>' + esc(k.name) + '</a>';
+      }).join('') + '</div>';
+      if (!s) {
+        html += '<div class="sec-title"><h2>' + esc(c.name) + '</h2><p>' + esc(c.tagline) + '</p></div><div class="subcards">' +
+          c.subs.map(function (x) {
+            var n = x.works.length, inner = '<span class="cover">' + coverImg(x.works[0]) + '</span><span class="cc-body"><b>' + esc(x.name) + '</b><span>' + esc(x.desc) + '</span>' +
+              '<em>' + (n ? plural(n, 'création', 'créations') : 'Bientôt disponible') + ' · ' + esc(x.price) + '</em></span>';
+            return n ? '<a class="catcard" href="#' + esc(c.id) + '--' + esc(x.id) + '">' + inner + '</a>' : '<div class="catcard empty">' + inner + '</div>';
+          }).join('') + '</div>';
+        root.innerHTML = html;
+        return;
+      }
+      html += '<div class="tabs lvl2" role="navigation" aria-label="Subdivisions de ' + esc(c.name) + '">' + c.subs.map(function (x) {
+        return '<a class="chip" href="#' + esc(c.id) + '--' + esc(x.id) + '"' + (x.id === s.id ? ' aria-current="true"' : '') + '>' + esc(x.name) + ' <small>' + x.works.length + '</small></a>';
+      }).join('') + '</div>';
+      html += '<div class="sec-title"><h2>' + esc(s.name) + '</h2><p>' + esc(s.desc) + ' · <strong>' + esc(s.price) + '</strong></p></div>';
+      if (s.works.length) {
+        html += '<div class="gallery" id="real-gallery">' + galleryHtml(s.works) + '</div>';
+      } else {
+        html += '<div class="emptybox"><p>Les créations de cette subdivision seront publiées prochainement.</p><a class="btn btn-p" href="contact.html">Commander ce service</a></div>';
+      }
+      root.innerHTML = html;
+      if (s.works.length) workButtons(s.works, $('#real-gallery'));
+    }
+    var lastKey = null;
+    function onRoute() {
+      var key = location.hash;
+      render();
+      if (lastKey !== null && key !== lastKey) {
+        var top = $('#real-root').getBoundingClientRect().top + window.pageYOffset - 90;
+        window.scrollTo(0, Math.max(0, top));
+      }
+      lastKey = key;
+    }
+    window.addEventListener('hashchange', onRoute);
+    onRoute();
+  }
+
+  /* ---------- tarifs ---------- */
+  function initTarifs(cat) {
+    var root = $('#tarifs-root');
+    var ids = cat.categories.map(function (c) { return c.id; });
+    function priceHtml(t) {
+      var pre = t[4] ? '<small>' + esc(t[4]) + '</small>' : '';
+      return pre + esc(t[3]) + ' $' + (t[5] ? ' ' + esc(t[5]) : '');
+    }
+    function render() {
+      var cur = location.hash.replace('#', '');
+      if (ids.indexOf(cur) < 0) cur = ids[0];
+      var c = cat.categories.filter(function (x) { return x.id === cur; })[0];
+      var rows = cat.tariffs.filter(function (t) { return t[0] === cur; });
+      var html = '<div class="tabs" role="navigation" aria-label="Catégories de tarifs">' + cat.categories.map(function (k) {
+        return '<a class="tab" href="#' + esc(k.id) + '"' + (k.id === cur ? ' aria-current="true"' : '') + '>' + esc(k.name) + '</a>';
+      }).join('') + '</div>';
+      html += '<div class="price"><div class="prow ph" aria-hidden="true"><span>Service</span><span>Détail</span><span>Prix</span><span>Standard</span><span>Express</span></div>' +
+        rows.map(function (t) {
+          return '<div class="prow"><b>' + esc(t[1]) + '</b><span class="d">' + esc(t[2]) + '</span><span class="pr">' + priceHtml(t) + '</span>' +
+            '<span class="t"><i>Standard </i>' + esc(t[6]) + '</span><span class="t"><i>Express </i>' + esc(t[7]) + '</span></div>';
+        }).join('') + '</div>';
+      html += '<div class="more"><a class="btn btn-s" href="realisations.html#' + esc(cur) + '">Voir les réalisations : ' + esc(c.name) + '</a><a class="btn btn-p" href="contact.html">Demander un devis</a></div>';
+      root.innerHTML = html;
+    }
+    window.addEventListener('hashchange', render);
+    render();
+  }
+
+  /* ---------- contact ---------- */
+  function initContact() {
+    var WA = CFG.whatsapp || '243892189581';
+    var f = $('#form'), nom = $('#f-nom'), tel = $('#f-tel'), srv = $('#f-srv'), del = $('#f-del'), msg = $('#f-msg'), hp = $('#f-hp');
+    var send = $('#f-send'), save = $('#f-save'), note = $('#f-note');
+    var useDb = !!(CFG.supabaseUrl && CFG.supabaseKey && window.supabase);
+    if (!useDb) save.hidden = true;
+    function build() {
+      return 'Bonjour Noor Communication,\n\nJe m\'appelle ' + nom.value.trim() + '.' +
+        (tel.value.trim() ? '\nMon numéro : ' + tel.value.trim() : '') +
+        '\nService : ' + srv.value + '\nDélai souhaité : ' + del.value + '\n\nMon projet :\n' + msg.value.trim();
+    }
+    function ok() { return nom.value.trim() && msg.value.trim(); }
+    function refresh() {
+      send.setAttribute('aria-disabled', ok() ? 'false' : 'true');
+      send.href = ok() ? 'https://wa.me/' + WA + '?text=' + encodeURIComponent(build()) : '#';
+    }
+    [nom, tel, srv, del, msg].forEach(function (el) { el.addEventListener('input', refresh); el.addEventListener('change', refresh); });
+    send.addEventListener('click', function (e) { if (send.getAttribute('aria-disabled') === 'true') e.preventDefault(); });
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (!useDb) return;
+      if (hp.value) return;
+      if (!ok()) { note.textContent = 'Indiquez votre nom et décrivez votre projet.'; return; }
+      save.setAttribute('aria-disabled', 'true'); note.textContent = 'Envoi en cours…';
+      var sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+      sb.from('contact_messages').insert({ name: nom.value.trim(), email: null, phone: tel.value.trim() || null, subject: srv.value + ' — ' + del.value, message: msg.value.trim() })
+        .then(function (r) {
+          save.setAttribute('aria-disabled', 'false');
+          if (r.error) { note.textContent = 'L\'envoi a échoué. Utilisez le bouton WhatsApp ou écrivez à lemabeni50@gmail.com.'; return; }
+          f.reset(); refresh();
+          note.textContent = 'Message envoyé. Nous vous répondons rapidement par WhatsApp ou par appel.';
+        });
+    });
+    $('#f-copy').addEventListener('click', function () {
+      var t = build();
+      function fail() { msg.focus(); msg.select(); note.textContent = 'Copie impossible ici : sélectionnez le texte et copiez-le.'; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(t).then(function () { note.textContent = 'Message copié. Collez-le dans WhatsApp ou dans un e-mail à lemabeni50@gmail.com.'; }, fail);
+      } else fail();
+    });
+    refresh();
+  }
+
+  /* ---------- démarrage ---------- */
+  var page = ($('[data-page]') || {}).dataset ? $('[data-page]').dataset.page : '';
+  if (page === 'contact') initContact();
+  if (page === 'home') loadCatalogue().then(initHome);
+  if (page === 'services') loadCatalogue().then(initServices);
+  if (page === 'realisations') loadCatalogue().then(initReal);
+  if (page === 'tarifs') loadCatalogue().then(initTarifs);
+})();
