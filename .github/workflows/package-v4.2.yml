@@ -1,0 +1,21 @@
+name: Package Noor Communication V4.2
+on:
+  push:
+    branches:
+      - audit-fixes-v4.2
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+      - name: Create source archive
+        run: zip -r noor-communication-v4.2.zip . -x ".git/*" "node_modules/*"
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: noor-communication-v4.2
+          path: noor-communication-v4.2.zip
+          if-no-files-found: error
+          retention-days: 14
