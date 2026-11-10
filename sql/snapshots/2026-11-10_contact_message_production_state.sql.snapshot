@@ -1,0 +1,157 @@
+-- NOOR COMMUNICATION — ÉTAT DE PRODUCTION OBSERVÉ LE 10 NOVEMBRE 2026
+-- SNAPSHOT DE RÉFÉRENCE UNIQUEMENT : NE PAS EXÉCUTER COMME MIGRATION.
+-- Ce fichier porte l'extension .sql.snapshot afin de ne pas être pris pour une migration Supabase.
+-- Définitions extraites en lecture seule de pg_get_functiondef et pg_get_triggerdef.
+-- Aucun secret Vault ni aucune adresse IP n'est inclus dans ce fichier.
+--
+-- Architecture réellement observée :
+--   public.contact_messages
+--     BEFORE INSERT noor_contact_ip_global_rate_limit_before_insert
+--       -> private.noor_contact_ip_global_rate_limit()
+--     BEFORE INSERT noor_contact_rate_limit_before_insert
+--       -> private.noor_contact_rate_limit()
+--
+-- Seuils observés :
+--   10/IP/15 min ; 30/IP/24 h ; 40 global/heure ; 150 global/24 h.
+--   Le contrôle séparé téléphone/e-mail bloque au-delà de 3 messages/15 min.
+--
+-- Dépendance également capturée :
+--   private.noor_rate_limit_hit() et la table private.noor_contact_rate_limits.
+--
+-- Limites connues, non corrigées dans ce snapshot :
+--   * l'empreinte IP porte sur l'adresse inet complète ; une rotation IPv6 peut
+--     donc permettre de contourner les quotas par IP ;
+--   * si cf-connecting-ip ou le secret Vault manque, les quotas par IP sont sautés,
+--     tandis que les quotas globaux restent actifs.
+--
+-- Toute modification de ce mécanisme doit faire l'objet d'une migration distincte,
+-- relue et testée. Ne pas rejouer ce snapshot tel quel sur la production.
+
+CREATE OR REPLACE FUNCTION private.noor_rate_limit_hit(p_scope text, p_hash bytea, p_window_start timestamp with time zone)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_hits integer;
+BEGIN
+  INSERT INTO private.noor_contact_rate_limits(scope, key_hash, window_start, hits, updated_at)
+  VALUES (p_scope, p_hash, p_window_start, 1, pg_catalog.now())
+  ON CONFLICT (scope, key_hash, window_start)
+  DO UPDATE SET
+    hits = private.noor_contact_rate_limits.hits + 1,
+    updated_at = pg_catalog.now()
+  RETURNING hits INTO v_hits;
+
+  RETURN v_hits;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION private.noor_contact_ip_global_rate_limit()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_headers jsonb := '{}'::jsonb;
+  v_ip_text text;
+  v_ip inet;
+  v_salt text;
+  v_ip_hash bytea;
+  v_global_hash bytea;
+  v_now timestamptz := pg_catalog.now();
+  v_hits integer;
+BEGIN
+  BEGIN
+    v_headers := COALESCE(pg_catalog.current_setting('request.headers',true)::jsonb,'{}'::jsonb);
+  EXCEPTION WHEN OTHERS THEN v_headers := '{}'::jsonb;
+  END;
+  v_ip_text := pg_catalog.btrim(COALESCE(v_headers->>'cf-connecting-ip',''));
+  IF v_ip_text <> '' THEN
+    BEGIN v_ip := v_ip_text::inet;
+    EXCEPTION WHEN OTHERS THEN v_ip := NULL;
+    END;
+  END IF;
+  BEGIN
+    SELECT decrypted_secret INTO v_salt FROM vault.decrypted_secrets
+    WHERE name='noor_contact_ip_salt' LIMIT 1;
+  EXCEPTION WHEN OTHERS THEN v_salt := NULL;
+  END;
+
+  IF v_ip IS NOT NULL AND v_salt IS NOT NULL AND pg_catalog.length(v_salt)>=32 THEN
+    v_ip_hash := extensions.hmac(pg_catalog.convert_to(v_ip::text,'UTF8'),pg_catalog.convert_to(v_salt,'UTF8'),'sha256');
+    v_hits := private.noor_rate_limit_hit('ip_15m',v_ip_hash,pg_catalog.date_bin(interval '15 minutes',v_now,timestamptz '2000-01-01 00:00:00+00'));
+    IF v_hits>10 THEN
+      RAISE SQLSTATE 'PGRST' USING
+        MESSAGE=pg_catalog.json_build_object('code','NOOR_RATE_LIMIT','message','Vous avez atteint la limite temporaire d’envoi.','details','Veuillez réessayer dans quelques minutes.','hint','Vous pouvez utiliser le bouton WhatsApp sur la page Contact.')::text,
+        DETAIL=pg_catalog.json_build_object('status',429,'headers',pg_catalog.json_build_object('Retry-After','900'))::text;
+    END IF;
+    v_hits := private.noor_rate_limit_hit('ip_24h',v_ip_hash,pg_catalog.date_bin(interval '24 hours',v_now,timestamptz '2000-01-01 00:00:00+00'));
+    IF v_hits>30 THEN
+      RAISE SQLSTATE 'PGRST' USING
+        MESSAGE=pg_catalog.json_build_object('code','NOOR_RATE_LIMIT','message','La limite quotidienne d’envoi est atteinte.','details','Veuillez réessayer ultérieurement.','hint','Vous pouvez utiliser le bouton WhatsApp sur la page Contact.')::text,
+        DETAIL=pg_catalog.json_build_object('status',429,'headers',pg_catalog.json_build_object('Retry-After','3600'))::text;
+    END IF;
+  END IF;
+
+  v_global_hash := extensions.digest(pg_catalog.convert_to('noor-contact-global','UTF8'),'sha256');
+  v_hits := private.noor_rate_limit_hit('global_1h',v_global_hash,pg_catalog.date_bin(interval '1 hour',v_now,timestamptz '2000-01-01 00:00:00+00'));
+  IF v_hits>40 THEN
+    RAISE SQLSTATE 'PGRST' USING
+      MESSAGE=pg_catalog.json_build_object('code','NOOR_GLOBAL_LIMIT','message','Notre formulaire reçoit actuellement trop de demandes.','details','Veuillez réessayer plus tard.','hint','Vous pouvez utiliser le bouton WhatsApp sur la page Contact.')::text,
+      DETAIL=pg_catalog.json_build_object('status',429,'headers',pg_catalog.json_build_object('Retry-After','3600'))::text;
+  END IF;
+  v_hits := private.noor_rate_limit_hit('global_24h',v_global_hash,pg_catalog.date_bin(interval '24 hours',v_now,timestamptz '2000-01-01 00:00:00+00'));
+  IF v_hits>150 THEN
+    RAISE SQLSTATE 'PGRST' USING
+      MESSAGE=pg_catalog.json_build_object('code','NOOR_GLOBAL_LIMIT','message','Le formulaire est momentanément indisponible.','details','Veuillez réessayer ultérieurement.','hint','Vous pouvez utiliser le bouton WhatsApp sur la page Contact.')::text,
+      DETAIL=pg_catalog.json_build_object('status',429,'headers',pg_catalog.json_build_object('Retry-After','3600'))::text;
+  END IF;
+  IF v_hits%100=0 THEN
+    DELETE FROM private.noor_contact_rate_limits WHERE window_start<v_now-interval '48 hours';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION private.noor_contact_rate_limit()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+AS $function$
+declare
+  v_email text := lower(btrim(coalesce(new.email, '')));
+  v_phone text := regexp_replace(coalesce(new.phone, ''), '[^0-9+]', '', 'g');
+  v_recent integer;
+begin
+  if v_email = '' and v_phone = '' then
+    raise exception 'Veuillez fournir un téléphone ou une adresse e-mail pour être recontacté.';
+  end if;
+  if v_email <> '' then
+    perform pg_advisory_xact_lock(hashtextextended('noor-contact-email:' || v_email, 0));
+  end if;
+  if v_phone <> '' then
+    perform pg_advisory_xact_lock(hashtextextended('noor-contact-phone:' || v_phone, 0));
+  end if;
+  select count(*) into v_recent
+  from public.contact_messages m
+  where m.created_at > now() - interval '15 minutes'
+    and ((v_email <> '' and lower(btrim(coalesce(m.email, ''))) = v_email)
+      or (v_phone <> '' and regexp_replace(coalesce(m.phone, ''), '[^0-9+]', '', 'g') = v_phone));
+  if v_recent >= 3 then
+    raise exception 'Trop de messages envoyés récemment avec ces coordonnées. Réessayez dans quelques minutes.';
+  end if;
+  return new;
+end;
+$function$;
+
+CREATE TRIGGER noor_contact_ip_global_rate_limit_before_insert
+BEFORE INSERT ON contact_messages
+FOR EACH ROW EXECUTE FUNCTION private.noor_contact_ip_global_rate_limit();
+
+CREATE TRIGGER noor_contact_rate_limit_before_insert
+BEFORE INSERT ON contact_messages
+FOR EACH ROW EXECUTE FUNCTION private.noor_contact_rate_limit();
