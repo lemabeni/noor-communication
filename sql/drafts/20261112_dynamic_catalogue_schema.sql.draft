@@ -118,6 +118,8 @@ create trigger catalogue_subcategories_set_updated_at
   before update on public.catalogue_subcategories
   for each row execute function private.set_catalogue_updated_at();
 
+revoke all on function private.set_catalogue_updated_at() from public, anon, authenticated;
+
 -- RLS: public can read published catalogue rows only.
 -- Authenticated users can mutate rows only if private.is_noor_admin() returns true.
 alter table public.catalogue_categories enable row level security;
@@ -167,7 +169,12 @@ create policy catalogue_subcategories_admin_all
 
 create policy catalogue_category_aliases_public_read
   on public.catalogue_category_aliases for select to anon, authenticated
-  using (true);
+  using (
+    exists (
+      select 1 from public.catalogue_categories c
+      where c.id = category_id and c.is_published = true and c.is_archived = false
+    )
+  );
 create policy catalogue_category_aliases_admin_all
   on public.catalogue_category_aliases for all to authenticated
   using (private.is_noor_admin()) with check (private.is_noor_admin());
