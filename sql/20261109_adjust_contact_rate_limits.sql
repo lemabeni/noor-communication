@@ -1,0 +1,10 @@
+-- FICHIER OBSOLÈTE — NE PAS EXÉCUTER.
+-- Le mécanisme noor_contact_request_guard() décrit par l'ancienne version
+-- n'est pas configuré dans l'état de production vérifié le 10 novembre 2026.
+-- La production utilise deux déclencheurs BEFORE INSERT sur public.contact_messages.
+-- Leurs définitions réelles sont archivées dans :
+--   sql/snapshots/2026-11-10_contact_message_production_state.sql.snapshot
+--
+-- Ce fichier est conservé uniquement pour préserver l'historique du dépôt.
+-- Il ne constitue ni une migration active ni une procédure de restauration.
+-- Toute évolution doit être créée dans une nouvelle migration après revue et tests.

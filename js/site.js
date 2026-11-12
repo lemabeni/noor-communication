@@ -324,9 +324,9 @@
       if (!useDb) return;
       if (hp.value) return;
       if (!validDatabaseMessage()) { note.textContent = 'Indiquez votre nom, votre projet et au moins un moyen de réponse valide : téléphone ou e-mail.'; return; }
-      save.setAttribute('aria-disabled', 'true'); note.textContent = 'Envoi en cours…';
-      var sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+      note.textContent = 'Envoi en cours…';
       save.disabled = true;
+      save.setAttribute('aria-disabled', 'true');
       var sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
       function showWhatsAppFallback(message) {
         note.textContent = message + ' ';
@@ -358,7 +358,10 @@
         .catch(function () {
           showWhatsAppFallback('La connexion au formulaire a échoué. Votre demande peut être envoyée directement :');
         })
-        .then(function () { save.disabled = false; });
+        .then(function () {
+          save.disabled = false;
+          save.setAttribute('aria-disabled', 'false');
+        });
     });
     $('#f-copy').addEventListener('click', function () {
       var t = build();

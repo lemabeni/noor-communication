@@ -28,16 +28,17 @@ Site vitrine statique en français pour Noor Communication (Kinshasa, RDC), conn
 
 Supabase JS est chargé depuis jsDelivr avec une version v2 fixée (`2.49.4`). L’empreinte SRI n’a pas pu être récupérée dans cet environnement hors ligne; une copie locale du SDK ou un hash SRI vérifié reste une amélioration de durcissement. Les polices sont chargées depuis Google Fonts.
 
+## Protection anti-abus du formulaire — état de production vérifié le 10 novembre 2026
 
-## Protection anti-abus du formulaire (configuration Supabase déjà appliquée)
+La production utilise deux déclencheurs PostgreSQL `BEFORE INSERT` sur `public.contact_messages` :
 
-Le projet Supabase connecté possède une protection serveur additionnelle sur `POST /rest/v1/contact_messages` :
+- `noor_contact_rate_limit_before_insert` appelle `private.noor_contact_rate_limit()` : maximum de 3 messages par téléphone ou e-mail sur 15 minutes.
+- `noor_contact_ip_global_rate_limit_before_insert` appelle `private.noor_contact_ip_global_rate_limit()` : 10 requêtes par IP sur 15 minutes, 30 par IP sur 24 heures, 40 globales par heure et 150 globales sur 24 heures.
 
-- 120 requêtes par empreinte IP sur 15 minutes et 500 sur 24 heures ;
-- 300 requêtes globales par heure et 2 000 par 24 heures ;
-- empreinte IP HMAC-SHA256 avec secret Vault, sans conservation de l'adresse IP en clair ;
-- contrôle du champ `cf-connecting-ip` et réponse temporaire avec recours à WhatsApp si la limite est atteinte.
+Le contrôle par IP utilise l’en-tête Cloudflare `cf-connecting-ip` et un secret Vault pour calculer une empreinte HMAC-SHA256. Si l’en-tête IP ou le secret Vault est absent ou invalide, les limites par IP sont ignorées ; les limites globales restent actives. L’adresse IP en clair et le secret Vault ne sont pas stockés dans le dépôt.
 
-Ces réglages sont déjà appliqués au projet Supabase. Ne pas réexécuter une ancienne migration de prototype ni remplacer les tables de production. Le fichier `sql/add_contact_message_rate_limit.sql` documente uniquement la limite historique par téléphone/e-mail ; il ne remplace pas la configuration serveur actuellement appliquée.
+**Limitation connue :** l’adresse IP complète est hachée, sans normalisation par préfixe IPv6. Une rotation d’adresse IPv6 peut donc contourner les quotas par IP. Ce point reste à corriger.
 
-La version 4.2 améliore également le retour utilisateur : en cas de limitation, d'erreur API ou de perte de connexion, le formulaire affiche un lien WhatsApp cliquable.
+La garde avant requête `private.noor_contact_request_guard()` présente dans un ancien fichier SQL n'est pas configurée dans l'état de production vérifié. Ne pas exécuter `sql/20261109_adjust_contact_rate_limits.sql`. Les définitions SQL extraites de la production sont conservées à titre de référence dans `sql/snapshots/2026-11-10_contact_message_production_state.sql.snapshot`. Ce snapshot n'est pas une migration et ne doit pas être exécuté directement.
+
+La protection réelle et l'insertion publique restent à valider de bout en bout par le test HTTP C.
