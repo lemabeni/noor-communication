@@ -25,6 +25,7 @@ create table public.catalogue_categories (
   pole_name text not null default '',
   sort_order integer not null default 0,
   is_published boolean not null default false,
+  is_archived boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint catalogue_categories_slug_format check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')
@@ -95,6 +96,28 @@ alter table public.service_pricing
     foreign key (category_id, subcategory_id)
     references public.catalogue_subcategories(category_id, id) on delete restrict;
 
+-- Keep updated_at accurate for every catalogue entity.
+create or replace function private.set_catalogue_updated_at()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $
+begin
+  new.updated_at := now();
+  return new;
+end;
+$;
+
+create trigger catalogue_categories_set_updated_at
+  before update on public.catalogue_categories
+  for each row execute function private.set_catalogue_updated_at();
+create trigger catalogue_category_families_set_updated_at
+  before update on public.catalogue_category_families
+  for each row execute function private.set_catalogue_updated_at();
+create trigger catalogue_subcategories_set_updated_at
+  before update on public.catalogue_subcategories
+  for each row execute function private.set_catalogue_updated_at();
+
 -- RLS: public can read published catalogue rows only.
 -- Authenticated users can mutate rows only if private.is_noor_admin() returns true.
 alter table public.catalogue_categories enable row level security;
@@ -104,21 +127,40 @@ alter table public.catalogue_category_aliases enable row level security;
 
 create policy catalogue_categories_public_read
   on public.catalogue_categories for select to anon, authenticated
-  using (is_published = true);
+  using (is_published = true and is_archived = false);
 create policy catalogue_categories_admin_all
   on public.catalogue_categories for all to authenticated
   using (private.is_noor_admin()) with check (private.is_noor_admin());
 
 create policy catalogue_category_families_public_read
   on public.catalogue_category_families for select to anon, authenticated
-  using (is_published = true);
+  using (
+    is_published = true and is_archived = false
+    and exists (
+      select 1 from public.catalogue_categories c
+      where c.id = category_id and c.is_published = true and c.is_archived = false
+    )
+  );
 create policy catalogue_category_families_admin_all
   on public.catalogue_category_families for all to authenticated
   using (private.is_noor_admin()) with check (private.is_noor_admin());
 
 create policy catalogue_subcategories_public_read
   on public.catalogue_subcategories for select to anon, authenticated
-  using (is_published = true);
+  using (
+    is_published = true and is_archived = false
+    and exists (
+      select 1 from public.catalogue_categories c
+      where c.id = category_id and c.is_published = true and c.is_archived = false
+    )
+    and (
+      family_id is null or exists (
+        select 1 from public.catalogue_category_families f
+        where f.id = family_id and f.category_id = catalogue_subcategories.category_id
+          and f.is_published = true and f.is_archived = false
+      )
+    )
+  );
 create policy catalogue_subcategories_admin_all
   on public.catalogue_subcategories for all to authenticated
   using (private.is_noor_admin()) with check (private.is_noor_admin());
@@ -160,5 +202,6 @@ commit;
 -- 5. Map all 36 local realization slugs and 25 tariff rows; compare counts and every slug.
 -- 6. Keep legacy projects.category and pricing.category values unchanged.
 -- 7. Confirm category deletion is blocked while child rows or projects/pricing reference it.
--- 8. Confirm public can see published rows only and a normal authenticated user cannot mutate.
--- 9. Do not execute this draft directly; convert to a numbered Supabase migration only after approval.
+-- 8. Confirm public can see only published, non-archived rows whose parent category/family is also published.
+-- 9. Confirm a normal authenticated user cannot mutate.
+-- 10. Do not execute this draft directly; convert to a numbered Supabase migration only after approval.
