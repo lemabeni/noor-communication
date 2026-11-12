@@ -235,7 +235,7 @@ La ligne Live streaming est déplacée vers la catégorie Live streaming, et non
 
 Le site affichera **« Bientôt disponible »** pour ces catégories tant qu'aucun tarif n'y est publié. Il ne faut pas convertir cette mention en « Sur devis ».
 
-Répartition : Design graphique 12 ; Photographie 3 ; Vidéographie 3 ; Live streaming 1 ; Édition 6 ; Communication digitale 0 ; Web et applications 0. Total : 25.
+Répartition : Design graphique 12 ; Photographie 3 ; Vidéographie 3 ; Live streaming 1 ; Édition 6 ; Communication digitale 0 ; Web et applications 0. Total : 27 lignes provisoires après ajout de Photo beauté et Photo produit.
 
 ## 4. Réalisations — répartition source
 
@@ -270,11 +270,11 @@ Total : 36 réalisations. Les subdivisions sans réalisation doivent rester pré
 Avant tout changement de schéma ou import :
 1. Valider les slugs cibles définitifs.
 2. Vérifier le mapping des deux indications photo sans ligne tarifaire.
-3. Vérifier les descriptions et métadonnées complètes des 36 réalisations, pas seulement leurs slugs.
+3. Vérifier les descriptions et métadonnées des 36 réalisations, les chemins d’images et les relations catégorie/subdivision.
 4. Préparer une sauvegarde et un plan de retour arrière.
 5. Créer les nouvelles structures de façon additive.
 6. Importer les catégories, familles et subdivisions en brouillon.
-7. Importer les réalisations et les 25 lignes tarifaires en brouillon.
+7. Importer les 36 réalisations et les 27 lignes tarifaires en brouillon.
 8. Comparer les comptes, slugs, médias, prix, délais et relations avant/après.
 9. Tester les permissions avec anon, admin et owner.
 10. Publier uniquement après validation.
