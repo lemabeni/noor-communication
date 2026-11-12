@@ -28,14 +28,15 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir -p dist
-          rsync -a ./ dist/ \
+          rsync -a \
             --exclude='.git/' \
             --exclude='.github/' \
             --exclude='docs/' \
             --exclude='sql/' \
             --exclude='README.md' \
             --exclude='LICENSE' \
-            --exclude='*.md'
+            --exclude='*.md' \
+            ./ dist/
           touch dist/.nojekyll
 
       - name: Configure GitHub Pages
