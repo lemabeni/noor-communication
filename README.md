@@ -4,8 +4,10 @@ Site vitrine statique en français pour Noor Communication (Kinshasa, RDC), conn
 
 ## Déploiement
 
-- Publier le contenu de ce dossier à la racine d’un projet Cloudflare Pages (ou Netlify).
-- Le fichier `_headers` configure les en-têtes de sécurité sur ces hébergeurs. GitHub Pages ne lit pas `_headers`.
+- Hébergement provisoire : GitHub Pages, déploiement automatique depuis la branche `main` avec GitHub Actions (`.github/workflows/deploy-pages.yml`).
+- Dans GitHub : **Settings → Pages → Build and deployment → Source → GitHub Actions**. Cette sélection doit être faite une fois dans les paramètres du dépôt.
+- Le workflow publie le site statique depuis `main` et exclut les dossiers `docs/` et `sql/` de l’artefact public.
+- Le fichier `_headers` n’est pas appliqué par GitHub Pages ; les en-têtes HTTP personnalisés seront configurés lors du futur transfert vers Vercel ou Cloudflare Pages.
 - Renseigner le domaine définitif avant d’ajouter `sitemap.xml`, `rel=canonical` et `og:url` absolus.
 - `config.js` contient uniquement la clé publishable Supabase, prévue pour le navigateur. Ne jamais y placer `service_role`.
 - Le code et les créations Noor sont propriétaires; voir `LICENSE`.
