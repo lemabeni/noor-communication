@@ -238,21 +238,29 @@
   function initServices(cat) {
     var root = $('#svc-root');
     root.innerHTML = cat.categories.map(function (c) {
-      var rows = c.subs.map(function (s) {
-        var n = s.works.length;
-        return '<li><div><b>' + esc(s.name) + '</b><span>' + esc(s.desc) + '</span></div><div class="svc-meta"><strong>' + esc(s.price) + '</strong>' +
-          '<a href="realisations.html#' + esc(c.id) + '--' + esc(s.id) + '">' + (n ? plural(n, 'création', 'créations') : 'Bientôt') + '</a></div></li>';
-      }).join('');
+      function renderRows(subs) {
+        return '<ul class="svc-list">' + subs.map(function (s) {
+          var n = s.works.length;
+          return '<li><div><b>' + esc(s.name) + '</b><span>' + esc(s.desc) + '</span></div><div class="svc-meta"><strong>' + esc(s.price || 'Bientôt disponible') + '</strong>' +
+            '<a href="realisations.html#' + esc(c.id) + '--' + esc(s.id) + '">' + (n ? plural(n, 'création', 'créations') : 'Bientôt') + '</a></div></li>';
+        }).join('') + '</ul>';
+      }
+      var body = '';
+      if (c.families && c.families.length) {
+        body = c.families.map(function (f) {
+          var grouped = c.subs.filter(function (s) { return s.familyId === f.id; });
+          return '<section class="svc-family"><h3>' + esc(f.name) + '</h3>' + renderRows(grouped) + '</section>';
+        }).join('') + renderRows(c.subs.filter(function (s) { return !s.familyId; }));
+      } else body = renderRows(c.subs);
       return '<article class="svc-block" id="' + esc(c.id) + '"><div class="svc-head"><h2>' + esc(c.name) + '</h2><p>' + esc(c.tagline) + '</p>' +
-        '<div class="svc-links"><a class="btn btn-s" href="tarifs.html#' + esc(c.id) + '">Voir les tarifs</a><a class="btn btn-s" href="realisations.html#' + esc(c.id) + '">Voir les réalisations</a></div></div>' +
-        '<ul class="svc-list">' + rows + '</ul></article>';
+        '<div class="svc-links"><a class="btn btn-s" href="tarifs.html#' + esc(c.id) + '">Voir les tarifs</a><a class="btn btn-s" href="realisations.html#' + esc(c.id) + '">Voir les réalisations</a></div></div>' + body + '</article>';
     }).join('');
   }
 
   /* ---------- réalisations : catégorie > subdivision > créations ---------- */
   function initReal(cat) {
     var root = $('#real-root');
-    function find(id) { return cat.categories.filter(function (c) { return c.id === id; })[0]; }
+    function find(id) { return cat.categories.filter(function (c) { return c.id === id || (c.aliases || []).indexOf(id) >= 0; })[0]; }
     function render() {
       var parts = location.hash.replace('#', '').split('--');
       var c = find(parts[0]);
@@ -273,12 +281,20 @@
         return '<a class="tab" href="#' + esc(k.id) + '"' + (k.id === c.id ? ' aria-current="true"' : '') + '>' + esc(k.name) + '</a>';
       }).join('') + '</div>';
       if (!s) {
-        html += '<div class="sec-title"><h2>' + esc(c.name) + '</h2><p>' + esc(c.tagline) + '</p></div><div class="subcards">' +
-          c.subs.map(function (x) {
-            var n = x.works.length, inner = '<span class="cover">' + coverImg(x.works[0]) + '</span><span class="cc-body"><b>' + esc(x.name) + '</b><span>' + esc(x.desc) + '</span>' +
-              '<em>' + (n ? plural(n, 'création', 'créations') : 'Bientôt disponible') + ' · ' + esc(x.price) + '</em></span>';
-            return n ? '<a class="catcard" href="#' + esc(c.id) + '--' + esc(x.id) + '">' + inner + '</a>' : '<div class="catcard empty">' + inner + '</div>';
-          }).join('') + '</div>';
+        html += '<div class="sec-title"><h2>' + esc(c.name) + '</h2><p>' + esc(c.tagline) + '</p></div>' +
+          (function () {
+            function cards(items) {
+              return '<div class="subcards">' + items.map(function (x) {
+                var n = x.works.length, inner = '<span class="cover">' + coverImg(x.works[0]) + '</span><span class="cc-body"><b>' + esc(x.name) + '</b><span>' + esc(x.desc) + '</span>' +
+                  '<em>' + (n ? plural(n, 'création', 'créations') : 'Bientôt disponible') + ' · ' + esc(x.price || 'Bientôt disponible') + '</em></span>';
+                return n ? '<a class="catcard" href="#' + esc(c.id) + '--' + esc(x.id) + '">' + inner + '</a>' : '<div class="catcard empty">' + inner + '</div>';
+              }).join('') + '</div>';
+            }
+            if (c.families && c.families.length) return c.families.map(function (f) {
+              return '<section class="real-family"><h3>' + esc(f.name) + '</h3>' + cards(c.subs.filter(function (x) { return x.familyId === f.id; })) + '</section>';
+            }).join('') + cards(c.subs.filter(function (x) { return !x.familyId; }));
+            return cards(c.subs);
+          })();
         root.innerHTML = html;
         return;
       }
@@ -318,17 +334,18 @@
     }
     function render() {
       var cur = location.hash.replace('#', '');
-      if (ids.indexOf(cur) < 0) cur = ids[0];
-      var c = cat.categories.filter(function (x) { return x.id === cur; })[0];
+      var c = cat.categories.filter(function (x) { return x.id === cur || (x.aliases || []).indexOf(cur) >= 0; })[0];
+      if (!c) c = cat.categories[0];
+      cur = c ? c.id : '';
       var rows = cat.tariffs.filter(function (t) { return t[0] === cur; });
       var html = '<div class="tabs" role="navigation" aria-label="Catégories de tarifs">' + cat.categories.map(function (k) {
         return '<a class="tab" href="#' + esc(k.id) + '"' + (k.id === cur ? ' aria-current="true"' : '') + '>' + esc(k.name) + '</a>';
       }).join('') + '</div>';
-      html += '<div class="price"><div class="prow ph" aria-hidden="true"><span>Service</span><span>Détail</span><span>Prix</span><span>Standard</span><span>Express</span></div>' +
+      html += rows.length ? '<div class="price"><div class="prow ph" aria-hidden="true"><span>Service</span><span>Détail</span><span>Prix</span><span>Standard</span><span>Express</span></div>' +
         rows.map(function (t) {
           return '<div class="prow"><b>' + esc(t[1]) + '</b><span class="d">' + esc(t[2]) + '</span><span class="pr">' + priceHtml(t) + '</span>' +
-            '<span class="t"><i>Standard </i>' + esc(t[6]) + '</span><span class="t"><i>Express </i>' + esc(t[7]) + '</span></div>';
-        }).join('') + '</div>';
+            '<span class="t"><i>Standard </i>' + esc(t[6] || 'À définir') + '</span><span class="t"><i>Express </i>' + esc(t[7] || 'À définir') + '</span></div>';
+        }).join('') + '</div>' : '<div class="emptybox"><p>Bientôt disponible. Les tarifs de cette catégorie seront publiés prochainement.</p></div>';
       html += '<div class="more"><a class="btn btn-s" href="realisations.html#' + esc(cur) + '">Voir les réalisations : ' + esc(c.name) + '</a><a class="btn btn-p" href="contact.html">Demander un devis</a></div>';
       root.innerHTML = html;
     }
