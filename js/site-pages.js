@@ -252,7 +252,8 @@
           return '<section class="svc-family"><h3>' + esc(f.name) + '</h3>' + renderRows(grouped) + '</section>';
         }).join('') + renderRows(c.subs.filter(function (s) { return !s.familyId; }));
       } else body = renderRows(c.subs);
-      return '<article class="svc-block" id="' + esc(c.id) + '"><div class="svc-head"><h2>' + esc(c.name) + '</h2><p>' + esc(c.tagline) + '</p>' +
+      var legacyAnchors = (c.aliases || []).map(function (alias) { return '<span class="legacy-anchor" id="' + esc(alias) + '" aria-hidden="true"></span>'; }).join('');
+      return legacyAnchors + '<article class="svc-block" id="' + esc(c.id) + '"><div class="svc-head"><h2>' + esc(c.name) + '</h2><p>' + esc(c.tagline) + '</p>' +
         '<div class="svc-links"><a class="btn btn-s" href="tarifs.html#' + esc(c.id) + '">Voir les tarifs</a><a class="btn btn-s" href="realisations.html#' + esc(c.id) + '">Voir les réalisations</a></div></div>' + body + '</article>';
     }).join('');
   }
