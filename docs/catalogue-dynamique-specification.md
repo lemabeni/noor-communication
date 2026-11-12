@@ -93,18 +93,18 @@ Motion design reste dans Vidéographie. Live streaming est une catégorie distin
 ## 5. Modèle relationnel cible à étudier
 
 - `catalogue_categories` : catégories.
-- `catalogue_families` : familles visibles, rattachées à une catégorie.
+- `catalogue_category_families` : familles visibles, rattachées à une catégorie.
 - `catalogue_subcategories` : subdivisions, catégorie obligatoire, famille facultative.
-- `catalogue_slug_aliases` : anciens slugs et chemins historiques.
+- `catalogue_category_aliases` : anciens slugs de catégories et ancres historiques.
 - `projects` : réalisations, avec références UUID vers catégorie et subdivision.
 - `service_pricing` : tarifs, référence obligatoire vers catégorie et référence subdivision facultative.
-- `catalogue_audit_logs` : journal des actions administratives.
+- `catalogue_audit_logs` : journal des créations, modifications et suppressions, alimenté par des déclencheurs SQL.
 
 Le modèle exact devra être comparé aux colonnes, contraintes, politiques RLS et données déjà présentes avant toute migration. Ne pas créer ces tables à l'aveugle ni remplacer les tables existantes.
 
 ## 6. Migration et compatibilité
 
-- Conserver les sept catégories actuelles, les 26 subdivisions, les 36 réalisations et les 25 lignes tarifaires de la source locale.
+- Conserver les sept catégories actuelles, les 26 subdivisions, les 36 réalisations et les 27 lignes tarifaires (25 historiques et 2 tarifs photo provisoires) de la source locale.
 - Préserver les identifiants historiques : `identite`, `print`, `edition`, `photo`, `video`, `digital`, `web`, ainsi que les identifiants des subdivisions.
 - Prévoir des alias pour les anciens liens `realisations.html#identite`, `#print`, leurs liens de subdivisions et les liens de tarifs.
 - Regrouper Identité et Print sous Design graphique sans effacer les anciens identifiants.
@@ -131,7 +131,7 @@ Cette spécification ne prétend pas que ces fonctionnalités de taxonomie sont 
 3. Préparer une migration additive avec sauvegarde, clés étrangères, index, politiques RLS et fonctions nécessaires.
 4. Construire les écrans CRUD d'administration et les contrôles de validation.
 5. Adapter le site public à la lecture de la taxonomie dynamique avec fallback local.
-6. Importer en brouillon et comparer les comptes : 7 catégories, 26 subdivisions, 36 réalisations, 25 tarifs.
+6. Importer en brouillon et comparer les comptes : 7 catégories, 2 familles visibles, 26 subdivisions, 36 réalisations, 27 tarifs provisoires.
 7. Tester les rôles, l'accès anonyme, les opérations de renommage/déplacement/archivage et les anciens liens.
 8. Publier après validation explicite ; réutiliser ensuite la même API dans l'application mobile.
 
