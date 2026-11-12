@@ -78,7 +78,7 @@ Motion design reste dans Vidéographie. Live streaming est une catégorie distin
 ## 4. Règles de données et d'intégrité
 
 1. Chaque catégorie, famille, subdivision, réalisation et tarif possède un UUID immuable.
-2. Les slugs sont uniques dans leur périmètre et modifiables uniquement avec mise à jour des alias historiques.
+2. Les slugs sont uniques dans leur périmètre et restent stables après création afin de préserver les liens. L'administration permet de renommer les libellés sans changer ces identifiants ; toute évolution de slug devra passer par une migration qui crée les alias correspondants.
 3. Les relations utilisent des clés étrangères, jamais le nom visible comme clé de relation.
 4. Renommer une catégorie ne doit pas casser les réalisations, tarifs, URLs ni liens d'administration.
 5. Une suppression avec dépendances est refusée par défaut. L'administrateur doit d'abord déplacer ou archiver les dépendances ; aucune suppression en cascade silencieuse.
