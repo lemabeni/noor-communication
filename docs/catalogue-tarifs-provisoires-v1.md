@@ -6,8 +6,8 @@ Statut : valeurs de départ choisies à la demande du fondateur ; modifiables de
 
 | Catégorie | Subdivision | Prestation | Prix provisoire | Préfixe | Suffixe | Délais |
 |---|---|---|---:|---|---|---|
-| Photographie | `beaute` | Photo beauté | 20 | Dès | $ | À définir |
-| Photographie | `produit` | Photo produit | 15 | Dès | $ | À définir |
+| Photographie | `beaute` | Photo beauté | 20 | Dès | — | À définir |
+| Photographie | `produit` | Photo produit | 15 | Dès | — | À définir |
 
 ## Règles d'import
 
@@ -21,3 +21,6 @@ Statut : valeurs de départ choisies à la demande du fondateur ; modifiables de
 - Il ne faut pas traiter ces montants comme un engagement commercial définitif avant validation par le propriétaire.
 
 Aucune écriture n'a été faite dans Supabase.
+
+
+L'affichage public ajoute déjà le symbole `$` après le montant ; le champ `price_suffix` de ces deux lignes reste donc vide pour éviter un affichage doublé (`20 $ $`).
