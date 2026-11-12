@@ -103,12 +103,10 @@ create or replace function private.set_catalogue_updated_at()
 returns trigger
 language plpgsql
 set search_path = pg_catalog
-as $
-begin
+as 'begin
   new.updated_at := now();
   return new;
-end;
-$;
+end;';
 
 create trigger catalogue_categories_set_updated_at
   before update on public.catalogue_categories
@@ -201,7 +199,7 @@ commit;
 -- 2. Verify private.is_noor_admin() exists and has the expected SECURITY DEFINER/search_path.
 -- 3. Verify authenticated and anon grants/RLS behaviour on a disposable project.
 -- 4. Seed categories/families/subcategories as unpublished first.
--- 5. Map all 36 local realization slugs and 25 tariff rows; compare counts and every slug.
+-- 5. Map all 36 local realization slugs and 27 provisional tariff rows; compare counts and every slug.
 -- 6. Keep legacy projects.category and pricing.category values unchanged.
 -- 7. Confirm category deletion is blocked while child rows or projects/pricing reference it.
 -- 8. Confirm public can see only published, non-archived rows whose parent category/family is also published.
