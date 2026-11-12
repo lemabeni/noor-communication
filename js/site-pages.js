@@ -56,27 +56,69 @@
     }
     var sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
     cataloguePromise = Promise.all([
-      sb.from('services').select('id,title,slug,description,sort_order,is_published').eq('is_published', true).order('sort_order'),
-      sb.from('projects').select('id,title,slug,category,short_description,description,cover_image,gallery,client_name,year,is_featured,sort_order,is_published').eq('is_published', true).order('sort_order'),
-      sb.from('service_pricing').select('category,service,detail,price,price_prefix,price_suffix,standard,express,sort_order').eq('is_published', true).order('sort_order')
+      sb.from('catalogue_categories').select('id,slug,name,tagline,pole_name,sort_order').eq('is_published', true).eq('is_archived', false).order('sort_order'),
+      sb.from('catalogue_category_families').select('id,category_id,slug,name,description,sort_order').eq('is_published', true).eq('is_archived', false).order('sort_order'),
+      sb.from('catalogue_subcategories').select('id,category_id,family_id,slug,name,description,sort_order').eq('is_published', true).eq('is_archived', false).order('sort_order'),
+      sb.from('catalogue_category_aliases').select('category_id,alias_slug'),
+      sb.from('projects').select('id,title,slug,category,category_id,subcategory_id,short_description,description,cover_image,gallery,client_name,year,is_featured,sort_order').eq('is_published', true).order('sort_order'),
+      sb.from('service_pricing').select('category,category_id,subcategory_id,service,detail,price,price_prefix,price_suffix,standard,express,sort_order').eq('is_published', true).order('sort_order')
     ]).then(function (r) {
       if (r.some(function (x) { return x.error; }) || !r[0].data || !r[0].data.length) return local;
-      if (!r[1].data || !r[1].data.length) return local; // conserve le catalogue/portfolio local tant qu'aucune réalisation n'a été publiée dans l'administration
-      var projects = r[1].data || [];
-      var cats = r[0].data.map(function (c) {
-        var related = projects.filter(function (w) { return (w.category || '').toLowerCase() === c.title.toLowerCase() || (w.category || '').toLowerCase() === c.slug.toLowerCase(); });
-        return { id: c.slug, name: c.title, tagline: c.description || '', subs: [{
-          id: c.slug, name: c.title, desc: c.description || '', price: '',
-          works: related.map(function (w) {
-            return { id: w.id, title: w.title, meta: [w.short_description, w.client_name, w.year].filter(Boolean).join(' · '), thumb: w.cover_image || '', full: w.cover_image || '', tw: 560, th: 560, light: false };
-          })
-        }] };
+      var categories = r[0].data;
+      var families = r[1].data || [];
+      var subcategories = r[2].data || [];
+      var aliases = r[3].data || [];
+      var projects = r[4].data || [];
+      var tariffsRaw = r[5].data || [];
+      var worksBySub = {};
+      projects.forEach(function (w) {
+        if (!w.subcategory_id) return;
+        if (!worksBySub[w.subcategory_id]) worksBySub[w.subcategory_id] = [];
+        var localWork = D.works && D.works[w.slug] ? D.works[w.slug] : {};
+        var image = w.cover_image || localWork.full || '';
+        worksBySub[w.subcategory_id].push({
+          id: w.slug || w.id,
+          title: w.title,
+          meta: [w.short_description, w.client_name, w.year].filter(Boolean).join(' · '),
+          thumb: localWork.thumb || image,
+          full: image,
+          tw: localWork.tw || 560,
+          th: localWork.th || 560,
+          light: !!localWork.light
+        });
       });
-      var tariffs = (r[2].data || []).map(function (t) {
-        var c = r[0].data.find(function (x) { return x.title === t.category || x.slug === t.category; });
-        return [c ? c.slug : t.category, t.service, t.detail || '', t.price, t.price_prefix || '', t.price_suffix || '', t.standard || '', t.express || ''];
+      var tariffs = tariffsRaw.map(function (t) {
+        var category = categories.filter(function (x) { return x.id === t.category_id; })[0];
+        return [category ? category.slug : t.category, t.service, t.detail || '', t.price, t.price_prefix || '', t.price_suffix || '', t.standard || '', t.express || ''];
       });
-      return { categories: cats, tariffs: tariffs.length ? tariffs : local.tariffs };
+      var built = categories.map(function (category) {
+        var catFamilies = families.filter(function (x) { return x.category_id === category.id; }).map(function (x) {
+          return { id: x.id, slug: x.slug, name: x.name, description: x.description || '' };
+        });
+        var subs = subcategories.filter(function (x) { return x.category_id === category.id; }).map(function (sub) {
+          var subTariffs = tariffsRaw.filter(function (t) { return t.subcategory_id === sub.id; });
+          var first = subTariffs[0];
+          var price = first ? ((first.price_prefix ? first.price_prefix + ' ' : '') + first.price + (first.price_suffix ? ' ' + first.price_suffix : '')).trim() : 'Bientôt disponible';
+          return {
+            id: sub.slug,
+            name: sub.name,
+            desc: sub.description || '',
+            price: price,
+            familyId: sub.family_id || null,
+            works: worksBySub[sub.id] || []
+          };
+        });
+        return {
+          id: category.slug,
+          name: category.name,
+          tagline: category.tagline || '',
+          poleName: category.pole_name || '',
+          families: catFamilies,
+          aliases: aliases.filter(function (a) { return a.category_id === category.id; }).map(function (a) { return a.alias_slug; }),
+          subs: subs
+        };
+      });
+      return { categories: built, tariffs: tariffs };
     }).catch(function () { return local; });
     return cataloguePromise;
   }
