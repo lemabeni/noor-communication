@@ -20,7 +20,7 @@ Statut : valeurs de départ choisies à la demande du fondateur ; modifiables de
 - Le formulaire d'administration devra permettre de modifier le montant, le préfixe, le suffixe, la description, les délais, l'ordre et le statut de publication.
 - Il ne faut pas traiter ces montants comme un engagement commercial définitif avant validation par le propriétaire.
 
-Aucune écriture n'a été faite dans Supabase.
+Importées dans `public.service_pricing` le 12 novembre 2026. Les deux lignes sont présentes en brouillon (`is_published = false`) et restent modifiables depuis l'administration.
 
 
 L'affichage public ajoute déjà le symbole `$` après le montant ; le champ `price_suffix` de ces deux lignes reste donc vide pour éviter un affichage doublé (`20 $ $`).
