@@ -1,0 +1,111 @@
+-- Production schema migration applied to Supabase project ghjdhdnztvcrijualwxc on 2026-11-12.
+-- Additive only: no existing rows or legacy text fields were deleted or rewritten.
+begin;
+create table public.catalogue_categories (
+ id uuid primary key default gen_random_uuid(), slug text not null unique, name text not null,
+ tagline text not null default '', pole_name text not null default '', sort_order integer not null default 0,
+ is_published boolean not null default false, is_archived boolean not null default false,
+ created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+ constraint catalogue_categories_slug_format check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+ constraint catalogue_categories_name_nonempty check (length(btrim(name)) > 0)
+);
+create table public.catalogue_category_families (
+ id uuid primary key default gen_random_uuid(), category_id uuid not null references public.catalogue_categories(id) on delete restrict,
+ slug text not null, name text not null, description text not null default '', sort_order integer not null default 0,
+ is_published boolean not null default false, is_archived boolean not null default false,
+ created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+ constraint catalogue_category_families_category_slug_key unique (category_id, slug),
+ constraint catalogue_category_families_category_id_id_key unique (category_id, id),
+ constraint catalogue_category_families_slug_format check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+ constraint catalogue_category_families_name_nonempty check (length(btrim(name)) > 0)
+);
+create table public.catalogue_subcategories (
+ id uuid primary key default gen_random_uuid(), category_id uuid not null references public.catalogue_categories(id) on delete restrict,
+ family_id uuid null, slug text not null, name text not null, description text not null default '', sort_order integer not null default 0,
+ is_published boolean not null default false, is_archived boolean not null default false,
+ created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+ constraint catalogue_subcategories_category_slug_key unique (category_id, slug),
+ constraint catalogue_subcategories_category_id_id_key unique (category_id, id),
+ constraint catalogue_subcategories_family_same_category_fkey foreign key (category_id, family_id)
+   references public.catalogue_category_families(category_id, id) on delete restrict,
+ constraint catalogue_subcategories_slug_format check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+ constraint catalogue_subcategories_name_nonempty check (length(btrim(name)) > 0)
+);
+create table public.catalogue_category_aliases (
+ id uuid primary key default gen_random_uuid(), category_id uuid not null references public.catalogue_categories(id) on delete restrict,
+ alias_slug text not null unique, created_at timestamptz not null default now(),
+ constraint catalogue_category_aliases_slug_format check (alias_slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')
+);
+create table public.catalogue_audit_logs (
+ id uuid primary key default gen_random_uuid(), actor_id uuid null references auth.users(id) on delete set null,
+ action text not null check (action in ('INSERT','UPDATE','DELETE')), entity_table text not null,
+ entity_id uuid not null, old_data jsonb, new_data jsonb, created_at timestamptz not null default now()
+);
+alter table public.projects add column category_id uuid null, add column subcategory_id uuid null,
+ add constraint projects_catalogue_category_fkey foreign key (category_id) references public.catalogue_categories(id) on delete restrict,
+ add constraint projects_catalogue_subcategory_same_category_fkey foreign key (category_id,subcategory_id)
+   references public.catalogue_subcategories(category_id,id) on delete restrict,
+ add constraint projects_catalogue_subcategory_requires_category check (subcategory_id is null or category_id is not null);
+alter table public.service_pricing add column category_id uuid null, add column subcategory_id uuid null,
+ add constraint service_pricing_catalogue_category_fkey foreign key (category_id) references public.catalogue_categories(id) on delete restrict,
+ add constraint service_pricing_catalogue_subcategory_same_category_fkey foreign key (category_id,subcategory_id)
+   references public.catalogue_subcategories(category_id,id) on delete restrict,
+ add constraint service_pricing_catalogue_subcategory_requires_category check (subcategory_id is null or category_id is not null);
+create index catalogue_category_families_category_order_idx on public.catalogue_category_families(category_id,sort_order);
+create index catalogue_subcategories_category_order_idx on public.catalogue_subcategories(category_id,sort_order);
+create index catalogue_subcategories_family_idx on public.catalogue_subcategories(family_id) where family_id is not null;
+create index projects_catalogue_category_order_idx on public.projects(category_id,sort_order) where category_id is not null;
+create index service_pricing_catalogue_category_order_idx on public.service_pricing(category_id,sort_order) where category_id is not null;
+create index catalogue_audit_logs_entity_idx on public.catalogue_audit_logs(entity_table,entity_id,created_at desc);
+create or replace function private.set_catalogue_updated_at() returns trigger language plpgsql
+ set search_path = pg_catalog as $fn$
+begin new.updated_at := now(); return new; end; $fn$;
+create trigger catalogue_categories_set_updated_at before update on public.catalogue_categories for each row execute function private.set_catalogue_updated_at();
+create trigger catalogue_category_families_set_updated_at before update on public.catalogue_category_families for each row execute function private.set_catalogue_updated_at();
+create trigger catalogue_subcategories_set_updated_at before update on public.catalogue_subcategories for each row execute function private.set_catalogue_updated_at();
+create or replace function private.log_catalogue_change() returns trigger language plpgsql security definer
+ set search_path = pg_catalog as $audit$
+begin
+ if tg_op='INSERT' then
+  insert into public.catalogue_audit_logs(actor_id,action,entity_table,entity_id,old_data,new_data)
+  values(auth.uid(),tg_op,tg_table_name,new.id,null,to_jsonb(new)); return new;
+ elsif tg_op='UPDATE' then
+  insert into public.catalogue_audit_logs(actor_id,action,entity_table,entity_id,old_data,new_data)
+  values(auth.uid(),tg_op,tg_table_name,new.id,to_jsonb(old),to_jsonb(new)); return new;
+ else
+  insert into public.catalogue_audit_logs(actor_id,action,entity_table,entity_id,old_data,new_data)
+  values(auth.uid(),tg_op,tg_table_name,old.id,to_jsonb(old),null); return old;
+ end if;
+end; $audit$;
+revoke all on function private.set_catalogue_updated_at() from public,anon,authenticated;
+revoke all on function private.log_catalogue_change() from public,anon,authenticated;
+create trigger catalogue_categories_audit after insert or update or delete on public.catalogue_categories for each row execute function private.log_catalogue_change();
+create trigger catalogue_category_families_audit after insert or update or delete on public.catalogue_category_families for each row execute function private.log_catalogue_change();
+create trigger catalogue_subcategories_audit after insert or update or delete on public.catalogue_subcategories for each row execute function private.log_catalogue_change();
+create trigger projects_catalogue_audit after insert or update or delete on public.projects for each row execute function private.log_catalogue_change();
+create trigger service_pricing_catalogue_audit after insert or update or delete on public.service_pricing for each row execute function private.log_catalogue_change();
+alter table public.catalogue_categories enable row level security;
+alter table public.catalogue_category_families enable row level security;
+alter table public.catalogue_subcategories enable row level security;
+alter table public.catalogue_category_aliases enable row level security;
+alter table public.catalogue_audit_logs enable row level security;
+create policy catalogue_categories_public_read on public.catalogue_categories for select to anon,authenticated using(is_published=true and is_archived=false);
+create policy catalogue_categories_admin_all on public.catalogue_categories for all to authenticated using(private.is_noor_admin()) with check(private.is_noor_admin());
+create policy catalogue_category_families_public_read on public.catalogue_category_families for select to anon,authenticated using(
+ is_published=true and is_archived=false and exists(select 1 from public.catalogue_categories c where c.id=category_id and c.is_published=true and c.is_archived=false));
+create policy catalogue_category_families_admin_all on public.catalogue_category_families for all to authenticated using(private.is_noor_admin()) with check(private.is_noor_admin());
+create policy catalogue_subcategories_public_read on public.catalogue_subcategories for select to anon,authenticated using(
+ is_published=true and is_archived=false
+ and exists(select 1 from public.catalogue_categories c where c.id=category_id and c.is_published=true and c.is_archived=false)
+ and (family_id is null or exists(select 1 from public.catalogue_category_families f where f.id=family_id and f.category_id=catalogue_subcategories.category_id and f.is_published=true and f.is_archived=false)));
+create policy catalogue_subcategories_admin_all on public.catalogue_subcategories for all to authenticated using(private.is_noor_admin()) with check(private.is_noor_admin());
+create policy catalogue_category_aliases_public_read on public.catalogue_category_aliases for select to anon,authenticated using(
+ exists(select 1 from public.catalogue_categories c where c.id=category_id and c.is_published=true and c.is_archived=false));
+create policy catalogue_category_aliases_admin_all on public.catalogue_category_aliases for all to authenticated using(private.is_noor_admin()) with check(private.is_noor_admin());
+create policy catalogue_audit_logs_admin_read on public.catalogue_audit_logs for select to authenticated using(private.is_noor_admin());
+revoke all on table public.catalogue_categories,public.catalogue_category_families,public.catalogue_subcategories,public.catalogue_category_aliases,public.catalogue_audit_logs from public,anon,authenticated;
+grant select on table public.catalogue_categories,public.catalogue_category_families,public.catalogue_subcategories,public.catalogue_category_aliases to anon,authenticated;
+grant select on table public.catalogue_audit_logs to authenticated;
+grant insert,update,delete on table public.catalogue_categories,public.catalogue_category_families,public.catalogue_subcategories,public.catalogue_category_aliases to authenticated;
+notify pgrst,'reload schema';
+commit;
