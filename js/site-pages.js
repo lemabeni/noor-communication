@@ -30,21 +30,48 @@
 
   /* ---------- catalogue ---------- */
   function localCatalogue() {
-    var cats = D.categories.map(function (c) {
-      return {
-        id: c.id, name: c.name, tagline: c.tagline,
-        subs: c.subs.map(function (s) {
-          return {
-            id: s.id, name: s.name, desc: s.desc, price: s.price,
-            works: s.works.map(function (id) {
-              var w = D.works[id];
-              return { id: id, title: w.title, meta: w.meta, thumb: w.thumb, full: w.full, tw: w.tw, th: w.th, light: !!w.light };
-            })
-          };
-        })
-      };
+    var source = D.categories || [];
+    function oldCategory(id) { return source.filter(function (c) { return c.id === id; })[0]; }
+    function buildSubs(category, familyId) {
+      return (category ? category.subs : []).map(function (s) {
+        return {
+          id: s.id, name: s.name, desc: s.desc, price: s.price || 'Bientôt disponible',
+          familyId: familyId || null,
+          works: (s.works || []).map(function (id) {
+            var w = D.works[id] || {};
+            return { id: id, title: w.title || id, meta: w.meta || '', thumb: w.thumb || '', full: w.full || w.thumb || '', tw: w.tw || 560, th: w.th || 560, light: !!w.light };
+          })
+        };
+      });
+    }
+    var identity = oldCategory('identite'), print = oldCategory('print'), video = oldCategory('video');
+    var categories = [
+      {
+        id: 'design-graphique', name: 'Design graphique', tagline: 'Identité visuelle et supports graphiques',
+        aliases: ['identite','print'],
+        families: [
+          { id: 'identite-visuelle', name: 'Identité visuelle', description: 'Logos, identités et chartes graphiques' },
+          { id: 'supports-graphiques', name: 'Supports graphiques', description: 'Supports imprimés et visuels pour les réseaux sociaux' }
+        ],
+        subs: buildSubs(identity, 'identite-visuelle').concat(buildSubs(print, 'supports-graphiques'))
+      },
+      { id: 'photographie', name: 'Photographie', tagline: 'Studio, extérieur, événements, beauté et produit', aliases: ['photo'], families: [], subs: buildSubs(oldCategory('photo')) },
+      { id: 'videographie', name: 'Vidéographie', tagline: 'Production vidéo et motion design', aliases: ['video'], families: [], subs: buildSubs({ subs: (video ? video.subs : []).filter(function (s) { return s.id !== 'live'; }) }) },
+      { id: 'live-streaming', name: 'Live streaming', tagline: 'Couverture et diffusion en direct d’événements', aliases: [], families: [], subs: buildSubs({ subs: (video ? video.subs : []).filter(function (s) { return s.id === 'live'; }) }) },
+      { id: 'edition', name: 'Édition', tagline: 'Conception, mise en page et publication de documents', aliases: [], families: [], subs: buildSubs(oldCategory('edition')) },
+      { id: 'communication-digitale', name: 'Communication digitale', tagline: 'Stratégie digitale et gestion des communautés', aliases: ['digital'], families: [], subs: buildSubs(oldCategory('digital')) },
+      { id: 'web-applications', name: 'Web et applications', tagline: 'Création, hébergement et maintenance de solutions web', aliases: ['web'], families: [], subs: buildSubs(oldCategory('web')) }
+    ];
+    var oldToNew = { identite: 'design-graphique', print: 'design-graphique', edition: 'edition', photo: 'photographie', video: 'videographie', digital: 'communication-digitale', web: 'web-applications' };
+    var tariffs = (D.tariffs || []).map(function (t) {
+      var category = t[0] === 'video' && t[1] === 'Live streaming' ? 'live-streaming' : oldToNew[t[0]] || t[0];
+      return [category, t[1], t[2], t[3], t[4] || '', t[5] || '', t[6] || '', t[7] || ''];
     });
-    return { categories: cats, tariffs: D.tariffs.slice() };
+    tariffs.push(
+      ['photographie', 'Photo beauté', 'Portraits éditoriaux, maquillage et mise en valeur', 20, 'Dès', '', '', ''],
+      ['photographie', 'Photo produit', 'Packshot et mise en scène de produits', 15, 'Dès', '', '', '']
+    );
+    return { categories: categories, tariffs: tariffs };
   }
   var cataloguePromise = null;
   function loadCatalogue() {
