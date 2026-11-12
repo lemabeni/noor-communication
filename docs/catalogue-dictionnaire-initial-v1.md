@@ -2,8 +2,8 @@
 
 Version 1.0 — 12 novembre 2026  
 Branche : `main`  
-Statut : correspondance technique préparatoire, à valider avant migration.  
-Aucune donnée Supabase n'a été modifiée.
+Statut : importation de production effectuée le 12 novembre 2026 ; contrôles de cohérence exécutés.  
+La migration relationnelle et les données initiales sont installées dans Supabase. Les 36 réalisations et 25 tarifs historiques sont publiés ; les deux tarifs provisoires restent en brouillon.
 
 ## 1. État observé de Supabase
 
@@ -12,15 +12,20 @@ Inventaire en lecture seule du projet `ghjdhdnztvcrijualwxc` :
 | Table | Lignes observées |
 |---|---:|
 | `services` | 5 |
-| `projects` | 0 |
-| `service_pricing` | 0 |
+| `projects` | 36 |
+| `service_pricing` | 27 (25 publiés, 2 brouillons) |
+| `catalogue_categories` | 7 |
+| `catalogue_category_families` | 2 |
+| `catalogue_subcategories` | 26 |
+| `catalogue_category_aliases` | 6 |
+| `catalogue_audit_logs` | 98 |
 | `blog_posts` | 0 |
 | `site_content` | 0 |
 | `site_settings` | 2 |
 | `contact_messages` | 0 |
 | `noor_admin_users` | 1 |
 
-La base contient cinq services génériques, mais aucune réalisation ni ligne tarifaire. Le catalogue de référence détaillé est encore dans `js/catalogue.js` : 7 catégories historiques, 26 subdivisions, 36 réalisations référencées et 25 lignes tarifaires. Il faut importer cette source locale sans la confondre avec les cinq lignes de `services`.
+La base conserve cinq services génériques. Le catalogue relationnel est désormais importé depuis `js/catalogue.js` : 7 catégories, 2 familles visibles, 26 subdivisions, 36 réalisations et 27 lignes tarifaires (dont deux brouillons). La table `services` reste distincte du catalogue métier.
 
 Les tables publiques existantes ont RLS activé. Les politiques observées autorisent les administrateurs reconnus par `private.is_noor_admin()` à gérer les contenus et les visiteurs anonymes à lire les contenus publiés. Les messages restent réservés aux administrateurs pour la lecture. Deux avertissements de sécurité restent présents : RLS sans politique sur `private.noor_contact_rate_limits` et `public.noor_admin_users` (INFO ; vérifier les privilèges et l'accès effectif), et protection des mots de passe compromis désactivée (WARN). Ne pas supprimer ni assouplir ces protections pendant la migration du catalogue.
 
@@ -265,9 +270,20 @@ Total : 36 réalisations. Les subdivisions sans réalisation doivent rester pré
 - Les suppressions de catégories/familles/subdivisions ayant des dépendances sont refusées par défaut ; pas de cascade silencieuse.
 - Les politiques RLS doivent autoriser la lecture publique des seuls éléments publiés et les mutations des seuls administrateurs. Les politiques existantes doivent être conservées ou remplacées explicitement dans une migration relue.
 
-## 6. Vérifications avant import
+## 6. Vérifications de production effectuées
 
-Avant tout changement de schéma ou import :
+- Migration additive `create_noor_dynamic_catalogue` appliquée avec succès.
+- Importation transactionnelle des catégories, familles, subdivisions, alias, réalisations et tarifs.
+- Contrôle des volumes : 7 catégories, 2 familles, 26 subdivisions, 6 alias, 36 réalisations, 27 tarifs (25 publiés, 2 brouillons).
+- Contrôle relationnel : 0 réalisation et 0 tarif avec catégorie/subdivision incohérente.
+- Contrôle des médias : les 36 fichiers `img/full/*.jpg` référencés par les réalisations existent dans `main`.
+- Test RLS sous le rôle `anon` : seules les lignes publiées sont visibles (7 catégories, 2 familles, 26 subdivisions, 36 réalisations, 25 tarifs).
+- Test de la fonction `private.is_noor_admin()` sous le contexte du compte propriétaire : autorisation confirmée. La ligne de test a été annululée par rollback.
+- Aucun contenu de contact, compte administrateur ou donnée préexistante n'a été supprimé ou modifié.
+
+## 7. Vérifications post-import et suite
+
+Avant de considérer la mise en production terminée :
 1. Valider les slugs cibles définitifs.
 2. Vérifier le mapping des deux indications photo sans ligne tarifaire.
 3. Vérifier les descriptions et métadonnées des 36 réalisations, les chemins d’images et les relations catégorie/subdivision.
