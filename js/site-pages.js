@@ -291,6 +291,10 @@
     function find(id) { return cat.categories.filter(function (c) { return c.id === id || (c.aliases || []).indexOf(id) >= 0; })[0]; }
     function render() {
       var parts = location.hash.replace('#', '').split('--');
+      if (parts[0] === 'video' && parts[1] === 'live') {
+        parts = ['live-streaming', 'live'];
+        if (history && history.replaceState) history.replaceState(null, '', location.pathname + location.search + '#live-streaming--live');
+      }
       var c = find(parts[0]);
       var s = c && parts[1] ? c.subs.filter(function (x) { return x.id === parts[1]; })[0] : null;
       var html = '';
