@@ -173,7 +173,7 @@ window.NOOR_DATA = {
      "id": "beaute",
      "name": "Photo beauté",
      "desc": "Portraits éditoriaux, maquillage et mise en valeur",
-     "price": "Sur devis",
+     "price": "dès 20 $",
      "works": [
       "beaute-1",
       "beaute-2"
@@ -244,14 +244,14 @@ window.NOOR_DATA = {
      "id": "community-management",
      "name": "Community management",
      "desc": "Gestion et animation des réseaux sociaux",
-     "price": "Sur devis",
+     "price": "Bientôt disponible",
      "works": []
     },
     {
      "id": "strategie-digitale",
      "name": "Stratégie digitale",
      "desc": "Plan de communication et accompagnement",
-     "price": "Sur devis",
+     "price": "Bientôt disponible",
      "works": []
     }
    ]
@@ -265,14 +265,14 @@ window.NOOR_DATA = {
      "id": "site-vitrine",
      "name": "Site vitrine",
      "desc": "Conception et réalisation de sites professionnels",
-     "price": "Sur devis",
+     "price": "Bientôt disponible",
      "works": []
     },
     {
      "id": "maintenance-web",
      "name": "Maintenance web",
      "desc": "Mises à jour et accompagnement technique",
-     "price": "Sur devis",
+     "price": "Bientôt disponible",
      "works": []
     }
    ]
