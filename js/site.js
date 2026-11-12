@@ -324,7 +324,7 @@
       if (!useDb) return;
       if (hp.value) return;
       if (!validDatabaseMessage()) { note.textContent = 'Indiquez votre nom, votre projet et au moins un moyen de réponse valide : téléphone ou e-mail.'; return; }
-      save.setAttribute('aria-disabled', 'true'); note.textContent = 'Envoi en cours…';
+      note.textContent = 'Envoi en cours…';
       save.disabled = true;
       save.setAttribute('aria-disabled', 'true');
       var sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
