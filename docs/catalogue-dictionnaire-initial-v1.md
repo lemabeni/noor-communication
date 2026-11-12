@@ -104,7 +104,113 @@ Chaque ligne ci-dessous est affectée à une subdivision car son libellé la dé
 | Photo outdoor et corporate | `exterieur` | dès 25 $/h | 2 à 3 jours | 48 h |
 | Photo événement | `evenement` | 50 $/h | 10 jours | 5 à 7 jours |
 
-La source locale affiche aussi une indication de prix sur les subdivisions Photo beauté (`Sur devis`) et Photo produit (`dès 15 $`), mais aucune ligne correspondante n'existe dans les 25 lignes tarifaires. Ne pas créer de nouvelle ligne tarifaire pendant l'import sans validation. Préserver ces indications de la source dans une note de migration et demander leur arbitrage éditorial avant publication.
+La source locale affiche aussi une indication de prix sur Photo beauté (`Sur devis`) et Photo produit (`dès 15 # Dictionnaire initial Noor Communication — correspondance des données
+
+Version 1.0 — 12 novembre 2026  
+Branche : `main`  
+Statut : correspondance technique préparatoire, à valider avant migration.  
+Aucune donnée Supabase n'a été modifiée.
+
+## 1. État observé de Supabase
+
+Inventaire en lecture seule du projet `ghjdhdnztvcrijualwxc` :
+
+| Table | Lignes observées |
+|---|---:|
+| `services` | 5 |
+| `projects` | 0 |
+| `service_pricing` | 0 |
+| `blog_posts` | 0 |
+| `site_content` | 0 |
+| `site_settings` | 2 |
+| `contact_messages` | 0 |
+| `noor_admin_users` | 1 |
+
+La base contient cinq services génériques, mais aucune réalisation ni ligne tarifaire. Le catalogue de référence détaillé est encore dans `js/catalogue.js` : 7 catégories historiques, 26 subdivisions, 36 réalisations référencées et 25 lignes tarifaires. Il faut importer cette source locale sans la confondre avec les cinq lignes de `services`.
+
+Les tables publiques existantes ont RLS activé. Les politiques observées autorisent les administrateurs reconnus par `private.is_noor_admin()` à gérer les contenus et les visiteurs anonymes à lire les contenus publiés. Les messages restent réservés aux administrateurs pour la lecture. Deux avertissements de sécurité restent présents : RLS sans politique sur `private.noor_contact_rate_limits` et `public.noor_admin_users` (INFO ; vérifier les privilèges et l'accès effectif), et protection des mots de passe compromis désactivée (WARN). Ne pas supprimer ni assouplir ces protections pendant la migration du catalogue.
+
+## 2. Taxonomie cible initiale
+
+| Catégorie cible | Pôle | Slug proposé | Ancien(s) identifiant(s) à préserver |
+|---|---|---|---|
+| Design graphique | NoorCreative | `design-graphique` | `identite`, `print` |
+| Photographie | NoorPictures | `photographie` | `photo` |
+| Vidéographie | Noorfilms | `videographie` | `video` |
+| Live streaming | NoorStream | `live-streaming` | anciennement subdivision `live` de `video` |
+| Édition | Noorédition | `edition` | `edition` |
+| Communication digitale | Noordigital | `communication-digitale` | `digital` |
+| Web et applications | NoorDev | `web-applications` | `web` |
+
+Les slugs cibles sont des propositions techniques et ne deviennent définitifs qu'après validation. Les UUID de base de données seront les identifiants relationnels immuables. Les anciens slugs restent des alias de navigation, pas des clés étrangères.
+
+### Design graphique — deux familles visibles
+
+**Identité visuelle**
+- `logo-simple` — Logo simple
+- `logo-complexe` — Logo complexe ou illustré
+- `identite-basique` — Identité visuelle basique
+- `charte` — Charte graphique complète
+
+**Supports graphiques**
+- `flyers` — Flyers
+- `bannieres` — Bannières réseaux sociaux
+- `cartes` — Cartes de visite
+- `kakemono` — Kakemonos
+- `carrousel` — Carrousels
+
+### Autres subdivisions
+
+- Photographie : `studio`, `exterieur`, `beaute`, `evenement`, `produit`.
+- Vidéographie : `video-simple`, `video-pro`, `motion`.
+- Live streaming : `live`.
+- Édition : `couverture`, `page-garde`, `mise-en-page`, `packaging`.
+- Communication digitale : `community-management`, `strategie-digitale`.
+- Web et applications : `site-vitrine`, `maintenance-web`.
+
+Total : 26 subdivisions. Motion design reste en Vidéographie. La subdivision `live` est transférée à la nouvelle catégorie Live streaming sans changer son identifiant historique.
+
+## 3. Correspondance des 25 lignes tarifaires
+
+Chaque ligne ci-dessous est affectée à une subdivision car son libellé la désigne clairement. Les montants, préfixes, suffixes et délais doivent être importés tels qu'ils existent dans la source, sans conversion ni arrondi.
+
+### Design graphique — 12 lignes
+
+| Prestation source | Subdivision cible | Prix | Délai standard | Express |
+|---|---|---:|---|---|
+| Logo simple | `logo-simple` | 25 $ | 5 à 7 jours | 4 jours |
+| Logo complexe ou illustré | `logo-complexe` | 40 $ | 5 à 7 jours | 4 jours |
+| Identité visuelle basique | `identite-basique` | 50 $ | 7 jours | 4 jours |
+| Charte graphique complète | `charte` | 100 $ | 7 à 10 jours | 5 jours |
+| Flyer simple | `flyers` | 10 $ | 2 à 3 jours | 24 h |
+| Flyer essentiel | `flyers` | 20 $ | 2 à 3 jours | 24 h |
+| Flyer upgrade | `flyers` | dès 50 $ | 4 jours | 48 h |
+| Bannière réseaux sociaux | `bannieres` | 10 $ | 2 à 3 jours | 24 h |
+| Carrousel (1 à 10 slides) | `carrousel` | 10 $ | 3 jours | 48 h |
+| Carte de visite | `cartes` | 15 $ | 2 à 3 jours | 24 h |
+| Kakemono simple | `kakemono` | 25 $ | 2 à 3 jours | 48 h |
+| Kakemono upgrade | `kakemono` | 50 $ | 4 jours | 48 h |
+
+### Édition — 6 lignes
+
+| Prestation source | Subdivision cible | Prix | Délai standard | Express |
+|---|---|---:|---|---|
+| Couverture de livre | `couverture` | dès 25 $ | 4 jours | 48 h |
+| Page de garde, rapport | `page-garde` | 20 $ | 2 à 3 jours | 24 h |
+| Mise en page de documents | `mise-en-page` | dès 30 $ | 4 à 7 jours | 72 h |
+| Packaging simple | `packaging` | 30 $ | 4 à 6 jours | 72 h |
+| Packaging moyen | `packaging` | 50 $ | 4 à 7 jours | 72 h |
+| Packaging upgrade | `packaging` | 150 $ | 5 à 7 jours | 72 h |
+
+### Photographie — 3 lignes
+
+| Prestation source | Subdivision cible | Prix | Délai standard | Express |
+|---|---|---:|---|---|
+| Photo studio | `studio` | dès 15 $ | 2 à 3 jours | 24 h |
+| Photo outdoor et corporate | `exterieur` | dès 25 $/h | 2 à 3 jours | 48 h |
+| Photo événement | `evenement` | 50 $/h | 10 jours | 5 à 7 jours |
+
+). À la demande du fondateur, deux lignes provisoires sont ajoutées au catalogue tarifaire : Photo beauté à partir de 20 $ (montant arbitraire initial) et Photo produit à partir de 15 $ (reprend l'indication locale). Les délais restent à définir. Ces deux lignes doivent être importées en brouillon (`is_published = false`) afin d'être modifiables depuis l'administration avant publication. Voir `docs/catalogue-tarifs-provisoires-v1.md`. Le total tarifaire cible passe donc de 25 à 27 lignes provisoires.
 
 ### Vidéographie — 3 lignes
 
