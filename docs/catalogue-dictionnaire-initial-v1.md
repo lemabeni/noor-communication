@@ -260,15 +260,15 @@ Total : 36 réalisations. Les subdivisions sans réalisation doivent rester pré
 
 ## 5. Décisions de structure pour la base
 
-- Catégories, familles et subdivisions seront des tables relationnelles distinctes.
-- `projects` référence une catégorie par UUID et une subdivision facultative par UUID.
+- Catégories, familles et subdivisions sont installées dans trois tables relationnelles distinctes.
+- `projects` référence une catégorie et une subdivision facultative par UUID.
 - `service_pricing` référence une catégorie par UUID et une subdivision facultative par UUID. La subdivision peut être nulle lorsqu'un tarif couvre plusieurs subdivisions.
 - `services` ne sera pas réutilisée comme table de catégories sans migration explicite : elle représente actuellement cinq services génériques et n'a pas la granularité voulue.
-- Ajouter un champ de statut/archivage distinct de `is_published` pour préserver les historiques.
-- Ajouter des alias de slugs pour les anciennes URL. Les identifiants historiques des subdivisions sont préservés.
+- Les catégories, familles et subdivisions disposent de `is_archived`, distinct de `is_published`.
+- Six alias sont installés pour conserver les anciennes ancres ; les identifiants historiques des subdivisions sont préservés.
 - Les noms de catégories et de subdivisions ne servent jamais de clés étrangères.
 - Les suppressions de catégories/familles/subdivisions ayant des dépendances sont refusées par défaut ; pas de cascade silencieuse.
-- Les politiques RLS doivent autoriser la lecture publique des seuls éléments publiés et les mutations des seuls administrateurs. Les politiques existantes doivent être conservées ou remplacées explicitement dans une migration relue.
+- Les politiques RLS autorisent la lecture publique des seuls éléments publiés et les mutations des seuls administrateurs. Les politiques préexistantes sur `projects` et `service_pricing` sont conservées.
 
 ## 6. Vérifications de production effectuées
 
@@ -278,21 +278,16 @@ Total : 36 réalisations. Les subdivisions sans réalisation doivent rester pré
 - Contrôle relationnel : 0 réalisation et 0 tarif avec catégorie/subdivision incohérente.
 - Contrôle des médias : les 36 fichiers `img/full/*.jpg` référencés par les réalisations existent dans `main`.
 - Test RLS sous le rôle `anon` : seules les lignes publiées sont visibles (7 catégories, 2 familles, 26 subdivisions, 36 réalisations, 25 tarifs).
-- Test de la fonction `private.is_noor_admin()` sous le contexte du compte propriétaire : autorisation confirmée. La ligne de test a été annululée par rollback.
+- Test de la fonction `private.is_noor_admin()` sous le contexte du compte propriétaire : autorisation confirmée. La ligne de test a été annulée par rollback.
 - Aucun contenu de contact, compte administrateur ou donnée préexistante n'a été supprimé ou modifié.
 
-## 7. Vérifications post-import et suite
+## 7. Contrôles restant avant clôture complète
 
-Avant de considérer la mise en production terminée :
-1. Valider les slugs cibles définitifs.
-2. Vérifier le mapping des deux indications photo sans ligne tarifaire.
-3. Vérifier les descriptions et métadonnées des 36 réalisations, les chemins d’images et les relations catégorie/subdivision.
-4. Préparer une sauvegarde et un plan de retour arrière.
-5. Créer les nouvelles structures de façon additive.
-6. Importer les catégories, familles et subdivisions en brouillon.
-7. Importer les 36 réalisations et les 27 lignes tarifaires en brouillon.
-8. Comparer les comptes, slugs, médias, prix, délais et relations avant/après.
-9. Tester les permissions avec anon, admin et owner.
-10. Publier uniquement après validation.
+1. Tester visuellement les pages publiques (accueil, services, réalisations et tarifs) sur mobile et ordinateur.
+2. Se connecter à `admin.html` avec le compte propriétaire pour vérifier la gestion des catégories, familles, subdivisions, réalisations et tarifs.
+3. Tester la création, la modification, l'archivage et les sélections de catégorie/subdivision depuis l'interface.
+4. Confirmer le déploiement du commit `main` sur l'hébergement public ; ne pas supposer que GitHub Pages suit automatiquement la branche `main`.
+5. Activer la protection des mots de passe compromis dans Supabase Auth avant d'inviter de nouveaux administrateurs.
+6. Garder Photo beauté et Photo produit en brouillon jusqu'à validation commerciale.
 
-**Ce document est un dictionnaire de correspondance préparatoire. Il ne constitue pas une migration SQL et n'a effectué aucune écriture dans Supabase.**
+Le schéma et les données du catalogue sont en production dans Supabase. La vérification visuelle de bout en bout et la confirmation du déploiement public restent à terminer.
