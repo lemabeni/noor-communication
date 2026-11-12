@@ -142,6 +142,7 @@ alter table public.catalogue_categories enable row level security;
 alter table public.catalogue_category_families enable row level security;
 alter table public.catalogue_subcategories enable row level security;
 alter table public.catalogue_category_aliases enable row level security;
+alter table public.catalogue_audit_logs enable row level security;
 
 create policy catalogue_categories_public_read
   on public.catalogue_categories for select to anon, authenticated
